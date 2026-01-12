@@ -574,23 +574,23 @@ public class ShopItemPlaceholderListener implements Listener {
      * Remplace tous les placeholders DynaShop dans une ligne
      */
     private String replaceDynaShopPlaceholders(String line, Map<String, String> prices) {
-        // Remplacements basiques
-        line = line.replace("%dynashop_current_buyPrice%", prices.get("buy"))
-                .replace("%dynashop_current_sellPrice%", prices.get("sell"))
-                .replace("%dynashop_current_buyMinPrice%", prices.get("buy_min"))
-                .replace("%dynashop_current_buyMaxPrice%", prices.get("buy_max"))
-                .replace("%dynashop_current_sellMinPrice%", prices.get("sell_min"))
-                .replace("%dynashop_current_sellMaxPrice%", prices.get("sell_max"))
-                .replace("%dynashop_current_buy%", prices.get("base_buy"))
-                .replace("%dynashop_current_sell%", prices.get("base_sell"))
-                .replace("%dynashop_current_stock%", prices.get("stock"))
-                .replace("%dynashop_current_maxstock%", prices.get("stock_max"))
-                .replace("%dynashop_current_stock_ratio%", prices.get("base_stock"))
-                .replace("%dynashop_current_colored_stock_ratio%", prices.get("colored_stock_ratio"))
-                .replace("%dynashop_current_buy_limit%", prices.get("buy_limit"))
-                .replace("%dynashop_current_sell_limit%", prices.get("sell_limit"))
-                .replace("%dynashop_current_buy_reset_time%", prices.get("buy_reset_time"))
-                .replace("%dynashop_current_sell_reset_time%", prices.get("sell_reset_time"))
+        // Remplacements basiques (com valores padrão para evitar nulls)
+        line = line.replace("%dynashop_current_buyPrice%", prices.getOrDefault("buy", "N/A"))
+                .replace("%dynashop_current_sellPrice%", prices.getOrDefault("sell", "N/A"))
+                .replace("%dynashop_current_buyMinPrice%", prices.getOrDefault("buy_min", "N/A"))
+                .replace("%dynashop_current_buyMaxPrice%", prices.getOrDefault("buy_max", "N/A"))
+                .replace("%dynashop_current_sellMinPrice%", prices.getOrDefault("sell_min", "N/A"))
+                .replace("%dynashop_current_sellMaxPrice%", prices.getOrDefault("sell_max", "N/A"))
+                .replace("%dynashop_current_buy%", prices.getOrDefault("base_buy", "N/A"))
+                .replace("%dynashop_current_sell%", prices.getOrDefault("base_sell", "N/A"))
+                .replace("%dynashop_current_stock%", prices.getOrDefault("stock", "N/A"))
+                .replace("%dynashop_current_maxstock%", prices.getOrDefault("stock_max", "N/A"))
+                .replace("%dynashop_current_stock_ratio%", prices.getOrDefault("base_stock", "N/A"))
+                .replace("%dynashop_current_colored_stock_ratio%", prices.getOrDefault("colored_stock_ratio", "N/A"))
+                .replace("%dynashop_current_buy_limit%", prices.getOrDefault("buy_limit", "N/A"))
+                .replace("%dynashop_current_sell_limit%", prices.getOrDefault("sell_limit", "N/A"))
+                .replace("%dynashop_current_buy_reset_time%", prices.getOrDefault("buy_reset_time", "N/A"))
+                .replace("%dynashop_current_sell_reset_time%", prices.getOrDefault("sell_reset_time", "N/A"))
                 .replace("%dynashop_current_buy_countdown%", prices.getOrDefault("buy_countdown", "N/A"))
                 .replace("%dynashop_current_sell_countdown%", prices.getOrDefault("sell_countdown", "N/A"))
                 .replace("%dynashop_current_buy_modifier%", prices.getOrDefault("buy_modifier", "100%"))
@@ -686,14 +686,18 @@ public class ShopItemPlaceholderListener implements Listener {
     private String determineShopId(InventoryView view) {
         if (view == null) return null;
         
+        // Primeiro verificar se é um menu de seleção de quantidade
+        String title = view.getTitle();
+        if (isAmountSelectionMenu(title)) {
+            return "AMOUNT_SELECTION";
+        }
+        if (isBulkSelectionMenu(title)) {
+            return "AMOUNT_SELECTION_BULK";
+        }
+        
         // NOVA ESTRATÉGIA: Como os títulos estão vazios, vamos usar os ITEMS do inventário
         // para descobrir qual shop está aberto
         try {
-            // Primeiro tentar via InventoryHolder (pode funcionar em algumas versões)
-            if (view.getTopInventory().getHolder() != null) {
-                plugin.info("§e[DEBUG] InventoryHolder: " + view.getTopInventory().getHolder().getClass().getName());
-            }
-            
             // Iterar pelos items do inventário e tentar descobrir o shop
             for (int slot = 0; slot < view.getTopInventory().getSize(); slot++) {
                 ItemStack item = view.getTopInventory().getItem(slot);
@@ -704,7 +708,6 @@ public class ShopItemPlaceholderListener implements Listener {
                         for (int page = 1; page <= 10; page++) {
                             ShopItem shopItem = shop.getShopItem(page, slot);
                             if (shopItem != null && shopItem.getItem().getType() == item.getType()) {
-                                plugin.info("§a[DEBUG] Shop detectado via item: " + shop.getId() + " (página " + page + ")");
                                 return page > 1 ? shop.getId() + "#" + page : shop.getId();
                             }
                         }
@@ -712,11 +715,9 @@ public class ShopItemPlaceholderListener implements Listener {
                 }
             }
         } catch (Exception e) {
-            plugin.info("§c[DEBUG] Erro ao detectar shop: " + e.getMessage());
-            e.printStackTrace();
+            // Ignorar erros silenciosamente
         }
         
-        plugin.info("§c[DEBUG] Não foi possível detectar o shopId");
         return null;
     }
     
@@ -808,13 +809,9 @@ public class ShopItemPlaceholderListener implements Listener {
      * Cherche l'ID du shop parmi les shops enregistrés
      */
     private String findShopIdFromTitle(String title) {
-        plugin.info("§e[DEBUG] findShopIdFromTitle - Iniciando busca...");
         try {
-            int shopCount = 0;
             for (Shop shop : ShopGuiPlusApi.getPlugin().getShopManager().getShops()) {
-                shopCount++;
                 String shopNameTemplate = ChatColor.stripColor(ChatColor.translateAlternateColorCodes('&', shop.getName())).trim();
-                plugin.info("§e[DEBUG] Shop #" + shopCount + " - ID: §f" + shop.getId() + " §e| Nome template: §f'" + shopNameTemplate + "'");
 
                 // Découper sur %page% pour construire la regex
                 String[] parts = shopNameTemplate.split("%page%", -1);
@@ -830,38 +827,28 @@ public class ShopItemPlaceholderListener implements Listener {
                 regexBuilder.append(".*"); // Permet du texte après
 
                 String regex = regexBuilder.toString();
-                plugin.info("§e[DEBUG] Regex construída: §f" + regex);
                 
                 Pattern pattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
                 String cleanTitle = ChatColor.stripColor(title).trim();
-                plugin.info("§e[DEBUG] Testando contra título limpo: §f'" + cleanTitle + "'");
                 
                 Matcher matcher = pattern.matcher(cleanTitle);
 
                 if (matcher.matches()) {
-                    plugin.info("§a[DEBUG] ✓ MATCH ENCONTRADO! Shop: " + shop.getId());
                     // Se %page% é presente, extrair a página
                     if (shop.getName().contains("%page%") && matcher.groupCount() >= 1) {
                         int page = 1;
                         try {
                             page = Integer.parseInt(matcher.group(1));
-                            plugin.info("§a[DEBUG] Página extraída: " + page);
                         } catch (NumberFormatException ignored) {
-                            plugin.info("§c[DEBUG] Erro ao parsear página, usando 1");
                         }
                         
                         return shop.getId() + "#" + page;
                     }
                     
                     return shop.getId();
-                } else {
-                    plugin.info("§c[DEBUG] ✗ Não deu match");
                 }
             }
-            plugin.info("§c[DEBUG] Nenhum shop encontrado após testar " + shopCount + " shops");
         } catch (Exception e) {
-            plugin.getLogger().warning("Error retrieving shop via API: " + e.getMessage());
-            e.printStackTrace();
         }
         
         return null;

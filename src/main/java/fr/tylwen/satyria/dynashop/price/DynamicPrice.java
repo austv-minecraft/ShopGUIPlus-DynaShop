@@ -214,18 +214,12 @@ public class DynamicPrice implements Cloneable {
     public double calculateProgressiveFinalPrice(int quantity, double growthFactor, boolean isBuy) {
         double initialPrice = isBuy ? this.buyPrice : this.sellPrice;
         
-        // DynaShopPlugin.getInstance().getLogger().info("DEBUG: calculateProgressiveFinalPrice - isBuy=" + isBuy + 
-        //     ", initialPrice=" + initialPrice + ", quantity=" + quantity + ", growthFactor=" + growthFactor);
-        
         if (initialPrice <= 0) {
-            // DynaShopPlugin.getInstance().getLogger().info("DEBUG: Price <= 0, returning: " + initialPrice);
             return initialPrice;
         }
         
         // P_after = P_before × g^k
-        double result = initialPrice * Math.pow(growthFactor, quantity);
-        // DynaShopPlugin.getInstance().getLogger().info("DEBUG: Final result: " + result);
-        return result;
+        return initialPrice * Math.pow(growthFactor, quantity);
     }
 
     /**
@@ -237,11 +231,6 @@ public class DynamicPrice implements Cloneable {
             double finalBuyPrice = calculateProgressiveFinalPrice(amount, growthBuy, true);
             this.buyPrice = Math.min(maxBuy, Math.max(finalBuyPrice, minBuy));
         }
-        // REMOVIDO: sellPrice não deve mudar quando jogador COMPRA
-        // if (sellPrice > 0) {
-        //     double finalSellPrice = calculateProgressiveFinalPrice(amount, growthSell, false);
-        //     this.sellPrice = Math.max(minSell, Math.min(finalSellPrice, maxSell));
-        // }
         
         // Vérifier les marges
         if (buyPrice > 0 && sellPrice > 0) {

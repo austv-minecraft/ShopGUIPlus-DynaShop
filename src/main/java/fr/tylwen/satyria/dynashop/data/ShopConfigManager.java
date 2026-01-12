@@ -17,40 +17,32 @@
  */
 package fr.tylwen.satyria.dynashop.data;
 
+import java.io.File;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
-// import org.bukkit.inventory.ItemStack;
-// import org.bukkit.inventory.meta.PotionMeta;
 
 import de.tr7zw.changeme.nbtapi.NBT;
-// import de.tr7zw.changeme.nbtapi.NBTCompound;
-// import de.tr7zw.changeme.nbtapi.NBTItem;
 import fr.tylwen.satyria.dynashop.DynaShopPlugin;
 import fr.tylwen.satyria.dynashop.compatibility.ItemNameManager;
 import fr.tylwen.satyria.dynashop.data.cache.CacheManager;
 import fr.tylwen.satyria.dynashop.data.param.DynaShopType;
 import fr.tylwen.satyria.dynashop.data.param.RecipeType;
-// import fr.tylwen.satyria.dynashop.hook.ShopGUIPlusHook;
 import fr.tylwen.satyria.dynashop.price.DynamicPrice;
-// import net.brcdev.shopgui.ShopGuiPlugin;
 import net.brcdev.shopgui.ShopGuiPlusApi;
-// import net.brcdev.shopgui.exception.shop.ShopsNotLoadedException;
 import net.brcdev.shopgui.shop.Shop;
 import net.brcdev.shopgui.shop.item.ShopItem;
-
-import java.io.File;
-import java.util.Map;
-// import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
 // import java.util.stream.Collectors;
 
 public class ShopConfigManager {
@@ -864,8 +856,16 @@ public class ShopConfigManager {
         itemPriceData.buyPrice = getOptionalDouble(itemSection, "buyPrice");
         itemPriceData.sellPrice = getOptionalDouble(itemSection, "sellPrice");
         
-        // Section buyDynamic
-        ConfigurationSection buyDynamic = findSectionIgnoreCase(itemSection, "buyDynamic");
+        // Section buyDynamic - tentar primeiro dentro de dynaShop, depois direto
+        ConfigurationSection buyDynamic = null;
+        ConfigurationSection dynaShopSection = findSectionIgnoreCase(itemSection, "dynaShop");
+        if (dynaShopSection != null) {
+            buyDynamic = findSectionIgnoreCase(dynaShopSection, "buyDynamic");
+        }
+        if (buyDynamic == null) {
+            buyDynamic = findSectionIgnoreCase(itemSection, "buyDynamic");
+        }
+        
         if (buyDynamic != null) {
             itemPriceData.defaultBuy = getOptionalBoolean(buyDynamic, "default");
             itemPriceData.minBuy = getOptionalDouble(buyDynamic, "min");
@@ -876,8 +876,15 @@ public class ShopConfigManager {
             itemPriceData.maxBuyLink = getOptionalString(buyDynamic, "maxLink");
         }
         
-        // Section sellDynamic
-        ConfigurationSection sellDynamic = findSectionIgnoreCase(itemSection, "sellDynamic");
+        // Section sellDynamic - tentar primeiro dentro de dynaShop, depois direto
+        ConfigurationSection sellDynamic = null;
+        if (dynaShopSection != null) {
+            sellDynamic = findSectionIgnoreCase(dynaShopSection, "sellDynamic");
+        }
+        if (sellDynamic == null) {
+            sellDynamic = findSectionIgnoreCase(itemSection, "sellDynamic");
+        }
+        
         if (sellDynamic != null) {
             itemPriceData.defaultSell = getOptionalBoolean(sellDynamic, "default");
             itemPriceData.minSell = getOptionalDouble(sellDynamic, "min");
