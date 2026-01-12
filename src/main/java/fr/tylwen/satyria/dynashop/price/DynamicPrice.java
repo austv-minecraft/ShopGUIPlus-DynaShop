@@ -17,9 +17,6 @@
  */
 package fr.tylwen.satyria.dynashop.price;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
 import org.bukkit.entity.Player;
 
 import fr.tylwen.satyria.dynashop.DynaShopPlugin;
@@ -233,16 +230,18 @@ public class DynamicPrice implements Cloneable {
 
     /**
      * Applique un growth/decay progressif pendant l'achat
+     * CORRECTION: Achat = joueur achète = buyPrice augmente, sellPrice NÃO muda
      */
     public void applyProgressiveGrowth(int amount) {
         if (buyPrice > 0) {
             double finalBuyPrice = calculateProgressiveFinalPrice(amount, growthBuy, true);
             this.buyPrice = Math.min(maxBuy, Math.max(finalBuyPrice, minBuy));
         }
-        if (sellPrice > 0) {
-            double finalSellPrice = calculateProgressiveFinalPrice(amount, growthSell, false);
-            this.sellPrice = Math.max(minSell, Math.min(finalSellPrice, maxSell));
-        }
+        // REMOVIDO: sellPrice não deve mudar quando jogador COMPRA
+        // if (sellPrice > 0) {
+        //     double finalSellPrice = calculateProgressiveFinalPrice(amount, growthSell, false);
+        //     this.sellPrice = Math.max(minSell, Math.min(finalSellPrice, maxSell));
+        // }
         
         // Vérifier les marges
         if (buyPrice > 0 && sellPrice > 0) {
@@ -257,16 +256,17 @@ public class DynamicPrice implements Cloneable {
 
     /**
      * Applique un decay progressif pendant la vente
+     * CORRECTION: Venda = jogador vende = sellPrice diminui, buyPrice NÃO muda
      */
     public void applyProgressiveDecay(int amount) {
-        if (buyPrice > 0) {
-            double finalBuyPrice = calculateProgressiveFinalPrice(amount, decayBuy, true);
-            this.buyPrice = Math.max(minBuy, Math.min(finalBuyPrice, maxBuy));
-        }
+        // REMOVIDO: buyPrice não deve mudar quando jogador VENDE
+        // if (buyPrice > 0) {
+        //     double finalBuyPrice = calculateProgressiveFinalPrice(amount, decayBuy, true);
+        //     this.buyPrice = Math.max(minBuy, Math.min(finalBuyPrice, maxBuy));
+        // }
         if (sellPrice > 0) {
             double finalSellPrice = calculateProgressiveFinalPrice(amount, decaySell, false);
             this.sellPrice = Math.min(maxSell, Math.max(finalSellPrice, minSell));
-            // this.sellPrice = Math.min(minSell, Math.max(finalSellPrice, maxSell));
         }
         
         // Vérifier les marges

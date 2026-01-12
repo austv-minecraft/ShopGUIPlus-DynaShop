@@ -17,42 +17,11 @@
  */
 package fr.tylwen.satyria.dynashop.listener;
 
-import org.bukkit.ChatColor;
-import org.bukkit.Material;
-import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryCloseEvent;
-import org.bukkit.event.inventory.InventoryOpenEvent;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.scheduler.BukkitTask;
-// import org.bukkit.scheduler.BukkitTask;
-import org.bukkit.inventory.InventoryView;
-
-import fr.tylwen.satyria.dynashop.DynaShopPlugin;
-import fr.tylwen.satyria.dynashop.data.cache.LimitCacheEntry;
-import fr.tylwen.satyria.dynashop.data.param.DynaShopType;
-import fr.tylwen.satyria.dynashop.price.DynamicPrice;
-import fr.tylwen.satyria.dynashop.system.TransactionLimiter.LimitPeriod;
-// import fr.tylwen.satyria.dynashop.system.TransactionLimiter.TransactionLimit;
-import me.clip.placeholderapi.PlaceholderAPI;
-import net.brcdev.shopgui.shop.Shop;
-import net.brcdev.shopgui.shop.item.ShopItem;
-import net.brcdev.shopgui.shop.item.ShopItemType;
-import net.brcdev.shopgui.ShopGuiPlusApi;
-import net.brcdev.shopgui.exception.player.PlayerDataNotLoadedException;
-import net.brcdev.shopgui.modifier.PriceModifierActionType;
-
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-// import java.time.temporal.ChronoUnit;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
-// import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -63,6 +32,33 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import org.bukkit.ChatColor;
+import org.bukkit.Material;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.inventory.InventoryView;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.scheduler.BukkitTask;
+
+import fr.tylwen.satyria.dynashop.DynaShopPlugin;
+import fr.tylwen.satyria.dynashop.data.cache.LimitCacheEntry;
+import fr.tylwen.satyria.dynashop.data.param.DynaShopType;
+import fr.tylwen.satyria.dynashop.price.DynamicPrice;
+import fr.tylwen.satyria.dynashop.system.TransactionLimiter.LimitPeriod;
+import me.clip.placeholderapi.PlaceholderAPI;
+import net.brcdev.shopgui.ShopGuiPlusApi;
+import net.brcdev.shopgui.exception.player.PlayerDataNotLoadedException;
+import net.brcdev.shopgui.modifier.PriceModifierActionType;
+import net.brcdev.shopgui.shop.Shop;
+import net.brcdev.shopgui.shop.item.ShopItem;
+import net.brcdev.shopgui.shop.item.ShopItemType;
 
 public class ShopItemPlaceholderListener implements Listener {
 
@@ -685,24 +681,43 @@ public class ShopItemPlaceholderListener implements Listener {
     }
     
     /**
-     * Détermine l'ID du shop à partir du titre de l'inventaire
+     * Détermine l'ID du shop à partir du InventoryHolder ou iterando items
      */
     private String determineShopId(InventoryView view) {
         if (view == null) return null;
         
-        String title = view.getTitle();
-        
-        // Vérifier les menus de sélection
-        if (isAmountSelectionMenu(title)) {
-            return "AMOUNT_SELECTION";
+        // NOVA ESTRATÉGIA: Como os títulos estão vazios, vamos usar os ITEMS do inventário
+        // para descobrir qual shop está aberto
+        try {
+            // Primeiro tentar via InventoryHolder (pode funcionar em algumas versões)
+            if (view.getTopInventory().getHolder() != null) {
+                plugin.info("§e[DEBUG] InventoryHolder: " + view.getTopInventory().getHolder().getClass().getName());
+            }
+            
+            // Iterar pelos items do inventário e tentar descobrir o shop
+            for (int slot = 0; slot < view.getTopInventory().getSize(); slot++) {
+                ItemStack item = view.getTopInventory().getItem(slot);
+                if (item != null && item.getType() != Material.AIR) {
+                    // Tentar encontrar esse item em algum shop
+                    for (Shop shop : ShopGuiPlusApi.getPlugin().getShopManager().getShops()) {
+                        // Verificar todas as páginas
+                        for (int page = 1; page <= 10; page++) {
+                            ShopItem shopItem = shop.getShopItem(page, slot);
+                            if (shopItem != null && shopItem.getItem().getType() == item.getType()) {
+                                plugin.info("§a[DEBUG] Shop detectado via item: " + shop.getId() + " (página " + page + ")");
+                                return page > 1 ? shop.getId() + "#" + page : shop.getId();
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            plugin.info("§c[DEBUG] Erro ao detectar shop: " + e.getMessage());
+            e.printStackTrace();
         }
         
-        if (isBulkSelectionMenu(title)) {
-            return "AMOUNT_SELECTION_BULK";
-        }
-        
-        // Chercher parmi les shops enregistrés
-        return findShopIdFromTitle(title);
+        plugin.info("§c[DEBUG] Não foi possível detectar o shopId");
+        return null;
     }
     
     // /**
@@ -793,9 +808,13 @@ public class ShopItemPlaceholderListener implements Listener {
      * Cherche l'ID du shop parmi les shops enregistrés
      */
     private String findShopIdFromTitle(String title) {
+        plugin.info("§e[DEBUG] findShopIdFromTitle - Iniciando busca...");
         try {
+            int shopCount = 0;
             for (Shop shop : ShopGuiPlusApi.getPlugin().getShopManager().getShops()) {
+                shopCount++;
                 String shopNameTemplate = ChatColor.stripColor(ChatColor.translateAlternateColorCodes('&', shop.getName())).trim();
+                plugin.info("§e[DEBUG] Shop #" + shopCount + " - ID: §f" + shop.getId() + " §e| Nome template: §f'" + shopNameTemplate + "'");
 
                 // Découper sur %page% pour construire la regex
                 String[] parts = shopNameTemplate.split("%page%", -1);
@@ -810,27 +829,41 @@ public class ShopItemPlaceholderListener implements Listener {
                 }
                 regexBuilder.append(".*"); // Permet du texte après
 
-                Pattern pattern = Pattern.compile(regexBuilder.toString(), Pattern.CASE_INSENSITIVE);
+                String regex = regexBuilder.toString();
+                plugin.info("§e[DEBUG] Regex construída: §f" + regex);
+                
+                Pattern pattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
                 String cleanTitle = ChatColor.stripColor(title).trim();
+                plugin.info("§e[DEBUG] Testando contra título limpo: §f'" + cleanTitle + "'");
+                
                 Matcher matcher = pattern.matcher(cleanTitle);
 
                 if (matcher.matches()) {
-                    // Si %page% est présent, extraire la page
+                    plugin.info("§a[DEBUG] ✓ MATCH ENCONTRADO! Shop: " + shop.getId());
+                    // Se %page% é presente, extrair a página
                     if (shop.getName().contains("%page%") && matcher.groupCount() >= 1) {
                         int page = 1;
                         try {
                             page = Integer.parseInt(matcher.group(1));
-                        } catch (NumberFormatException ignored) {}
-                        // plugin.info("Shop found: " + shop.getId() + " on page " + page);
+                            plugin.info("§a[DEBUG] Página extraída: " + page);
+                        } catch (NumberFormatException ignored) {
+                            plugin.info("§c[DEBUG] Erro ao parsear página, usando 1");
+                        }
+                        
                         return shop.getId() + "#" + page;
                     }
-                    // plugin.info("Shop found: " + shop.getId());
+                    
                     return shop.getId();
+                } else {
+                    plugin.info("§c[DEBUG] ✗ Não deu match");
                 }
             }
+            plugin.info("§c[DEBUG] Nenhum shop encontrado após testar " + shopCount + " shops");
         } catch (Exception e) {
             plugin.getLogger().warning("Error retrieving shop via API: " + e.getMessage());
+            e.printStackTrace();
         }
+        
         return null;
     }
     // private String findShopIdFromTitle(String title) {
@@ -1028,7 +1061,33 @@ public class ShopItemPlaceholderListener implements Listener {
             
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 if (player.isOnline() && player.getOpenInventory() != null) {
-                    updateShopInventory(player, view, shopId, page, originalLores);
+                    // ✅ FIX CRÍTICO: Detectar shopId ATUAL do inventário aberto, não usar o capturado
+                    InventoryView currentView = player.getOpenInventory();
+                    String currentShopId = determineShopId(currentView);
+                    
+                    // Se não conseguiu detectar shopId ou não é mais um shop, cancelar task
+                    if (currentShopId == null || currentShopId.equals("AMOUNT_SELECTION") || currentShopId.equals("AMOUNT_SELECTION_BULK")) {
+                        BukkitTask t = playerRefreshBukkitTasks.remove(player.getUniqueId());
+                        if (t != null) t.cancel();
+                        playerRefreshTasks.remove(player.getUniqueId());
+                        return;
+                    }
+                    
+                    // Extrair page do shopId se presente
+                    int currentPage = 1;
+                    if (currentShopId.contains("#")) {
+                        String[] parts = currentShopId.split("#");
+                        currentShopId = parts[0];
+                        try {
+                            currentPage = Integer.parseInt(parts[1]);
+                        } catch (NumberFormatException e) {
+                            currentPage = 1;
+                        }
+                    }
+                    
+                    // ✅ MANTER originalLores capturados em onInventoryOpen
+                    // Eles contêm os lores ANTES de serem substituídos por "Loading..."
+                    updateShopInventory(player, currentView, currentShopId, currentPage, originalLores);
                 }
             });
         }, 0L, refreshInterval / 50);
@@ -1816,72 +1875,85 @@ public class ShopItemPlaceholderListener implements Listener {
         if (view == null || view.getTopInventory() == null) return;
 
         try {
-            // Capturer les valeurs finales pour utilisation dans les lambdas
-            final String finalShopId = shopId;
-            if (finalShopId == null) return;
+            if (shopId == null) return;
 
-            // Identifier les slots qui ont besoin d'être mis à jour
-            List<Integer> slotsToUpdate = new ArrayList<>(originalLores.keySet());
-            
-            // Traiter les slots par lots pour éviter de surcharger le serveur
-            for (int i = 0; i < slotsToUpdate.size(); i += BATCH_SIZE) {
-                final int startIdx = i;
-                final int endIdx = Math.min(i + BATCH_SIZE, slotsToUpdate.size());
-            
-                // Traiter chaque lot de manière asynchrone
-                plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-                    Map<Integer, ItemStack> updatedItems = new HashMap<>();
+            // ✅ FIX: Processar todos os slots de uma vez, sem lotes assíncronos
+            // O processamento em lote causava race conditions nos slots 9+
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                Map<Integer, ItemStack> updatedItems = new HashMap<>();
+                
+                // Processar TODOS os slots sequencialmente
+                for (Map.Entry<Integer, List<String>> entry : originalLores.entrySet()) {
+                    int slot = entry.getKey();
+                    List<String> originalLore = entry.getValue();
                     
-                    for (int j = startIdx; j < endIdx; j++) {
-                        int slot = slotsToUpdate.get(j);
+                    try {
+                        ItemStack item = view.getTopInventory().getItem(slot);
+                        if (item == null || !item.hasItemMeta()) continue;
+                        if (originalLore == null || !containsDynaShopPlaceholder(originalLore)) continue;
+
+                        // Récupérer l'item du shop
+                        Shop shop = ShopGuiPlusApi.getPlugin().getShopManager().getShopById(shopId);
+                        if (shop == null) continue;
                         
-                        try {
-                            ItemStack item = view.getTopInventory().getItem(slot);
-                            if (item == null || !item.hasItemMeta()) continue;
-
-                            // Utiliser le lore original pour la détection des placeholders
-                            List<String> originalLore = originalLores.get(slot);
-                            if (originalLore == null || !containsDynaShopPlaceholder(originalLore)) continue;
-
-                            // Récupérer l'item du shop
-                            Shop shop = ShopGuiPlusApi.getPlugin().getShopManager().getShopById(finalShopId);
-                            if (shop == null) continue;
-                            
-                            ShopItem shopItem = shop.getShopItem(page, slot);
-                            if (shopItem == null) continue;
-                            
-                            String itemId = shopItem.getId();
-                            if (itemId == null) continue;
-
-                            // Calcul des prix pour cet item
-                            Map<String, String> itemPrices = getCachedPlaceholders(player, finalShopId, itemId, item, false);
-                            
-                            // Appliquer les remplacements
-                            List<String> newLore = replacePlaceholders(originalLore, itemPrices, player);
-                            ItemMeta meta = item.getItemMeta();
-                            meta.setLore(newLore);
-                            item.setItemMeta(meta);
-                            
-                            // Ajouter l'item au lot pour mise à jour groupée
-                            updatedItems.put(slot, item.clone());
-                        } catch (Exception e) {
-                            // Ignorer les erreurs individuelles
-                        }
-                    }
-
-                    // Mettre à jour tous les items du lot en une seule fois
-                    if (!updatedItems.isEmpty()) {
-                        plugin.getServer().getScheduler().runTask(plugin, () -> {
-                            if (player.isOnline() && player.getOpenInventory().equals(view)) {
-                                for (Map.Entry<Integer, ItemStack> entry : updatedItems.entrySet()) {
-                                    view.getTopInventory().setItem(entry.getKey(), entry.getValue());
+                        // ✅ FIX: Buscar ShopItem percorrendo todos os items, não apenas por slot
+                        ShopItem shopItem = shop.getShopItem(page, slot);
+                        
+                        // Se não encontrou por slot, tentar buscar por correspondência de material
+                        if (shopItem == null) {
+                            // Percorrer todos os items da página
+                            for (int checkSlot = 0; checkSlot < 54; checkSlot++) {
+                                ShopItem tempItem = shop.getShopItem(page, checkSlot);
+                                if (tempItem != null) {
+                                    ItemStack tempStack = tempItem.getItem();
+                                    if (tempStack != null && tempStack.getType() == item.getType()) {
+                                        // Verificação adicional por meta se houver
+                                        if (item.hasItemMeta() && tempStack.hasItemMeta()) {
+                                            if (item.getItemMeta().getDisplayName().equals(tempStack.getItemMeta().getDisplayName())) {
+                                                shopItem = tempItem;
+                                                break;
+                                            }
+                                        } else if (!item.hasItemMeta() && !tempStack.hasItemMeta()) {
+                                            shopItem = tempItem;
+                                            break;
+                                        }
+                                    }
                                 }
-                                player.updateInventory(); // Une seule mise à jour pour tout le lot
                             }
-                        });
+                        }
+                        
+                        if (shopItem == null) continue;
+                        
+                        String itemId = shopItem.getId();
+                        if (itemId == null) continue;
+
+                        // ✅ FIX: Forçar refresh para garantir preços atualizados
+                        Map<String, String> itemPrices = getCachedPlaceholders(player, shopId, itemId, item, true);
+                        
+                        // Appliquer les remplacements
+                        List<String> newLore = replacePlaceholders(originalLore, itemPrices, player);
+                        ItemMeta meta = item.getItemMeta();
+                        meta.setLore(newLore);
+                        item.setItemMeta(meta);
+                        
+                        updatedItems.put(slot, item.clone());
+                    } catch (Exception e) {
+                        plugin.getLogger().warning("Error updating slot " + slot + ": " + e.getMessage());
                     }
-                });
-            }
+                }
+
+                // Atualizar todos os items de uma vez
+                if (!updatedItems.isEmpty()) {
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        if (player.isOnline() && player.getOpenInventory().equals(view)) {
+                            for (Map.Entry<Integer, ItemStack> entry : updatedItems.entrySet()) {
+                                view.getTopInventory().setItem(entry.getKey(), entry.getValue());
+                            }
+                            player.updateInventory();
+                        }
+                    });
+                }
+            });
         } catch (Exception e) {
             plugin.getLogger().warning("Error updating inventory: " + e.getMessage());
         }
@@ -1894,87 +1966,72 @@ public class ShopItemPlaceholderListener implements Listener {
         if (view == null || view.getTopInventory() == null) return;
 
         try {
-            // Identifier les slots qui ont besoin d'être mis à jour
-            List<Integer> slotsToUpdate = new ArrayList<>(originalLores.keySet());
-            
-            // Traiter les slots par lots
-            for (int i = 0; i < slotsToUpdate.size(); i += BATCH_SIZE) {
-                final int startIdx = i;
-                final int endIdx = Math.min(i + BATCH_SIZE, slotsToUpdate.size());
+            // ✅ FIX: Processar todos os slots sequencialmente, sem lotes
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                Map<Integer, ItemStack> updatedItems = new HashMap<>();
                 
-                // Traiter chaque lot de manière asynchrone
-                plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-                    Map<Integer, ItemStack> updatedItems = new HashMap<>();
+                for (Map.Entry<Integer, List<String>> entry : originalLores.entrySet()) {
+                    int slot = entry.getKey();
+                    List<String> originalLore = entry.getValue();
                     
-                    for (int j = startIdx; j < endIdx; j++) {
-                        int slot = slotsToUpdate.get(j);
-                        
-                        try {
-                            ItemStack button = view.getTopInventory().getItem(slot);
-                            if (button == null || !button.hasItemMeta() || !button.getItemMeta().hasLore()) continue;
+                    try {
+                        ItemStack button = view.getTopInventory().getItem(slot);
+                        if (button == null || !button.hasItemMeta() || !button.getItemMeta().hasLore()) continue;
+                        if (originalLore == null || !containsDynaShopPlaceholder(originalLore)) continue;
 
-                            // Déterminer la quantité pour ce slot
-                            int quantity;
-                            if (info.getMenuType().equals("AMOUNT_SELECTION") && 
-                                button.getItemMeta().hasDisplayName() &&
-                                slot == ShopGuiPlusApi.getPlugin().getConfigMain().getConfig().getInt("amountSelectionGUI.buttons.sellAll.slot")) {
-                                // Calculer le nombre total d'items dans l'inventaire pour "Tout vendre"
-                                quantity = 0;
-                                for (ItemStack item : player.getInventory().getContents()) {
-                                    if (item != null && item.getType() == info.getItemStack().getType() && 
-                                        plugin.getPriceRecipe().customCompare(item, info.getItemStack())) {
-                                        quantity += item.getAmount();
-                                    }
+                        // Determinar a quantidade para este slot
+                        int quantity;
+                        if (info.getMenuType().equals("AMOUNT_SELECTION") && 
+                            button.getItemMeta().hasDisplayName() &&
+                            slot == ShopGuiPlusApi.getPlugin().getConfigMain().getConfig().getInt("amountSelectionGUI.buttons.sellAll.slot")) {
+                            // Calcular o número total de items no inventário para "Vender tudo"
+                            quantity = 0;
+                            for (ItemStack item : player.getInventory().getContents()) {
+                                if (item != null && item.getType() == info.getItemStack().getType() && 
+                                    plugin.getPriceRecipe().customCompare(item, info.getItemStack())) {
+                                    quantity += item.getAmount();
                                 }
-                            } else if (info.getMenuType().equals("AMOUNT_SELECTION_BULK")) {
-                                // Pour les menus bulk, utiliser la valeur configurée
-                                int stackValue = info.getValueForSlot(slot);
-                                quantity = stackValue * button.getMaxStackSize();
-                            } else {
-                                // Pour les menus standard, utiliser la quantité de l'item
-                                quantity = info.getItemStack().getAmount();
                             }
-                            
-                            // Récupérer le lore original
-                            List<String> originalLore = originalLores.get(slot);
-                            if (originalLore == null || !containsDynaShopPlaceholder(originalLore)) continue;
-                            
-                            // Calculer les prix pour cette quantité spécifique
-                            Map<String, String> prices = getCachedPlaceholders(
-                                player, 
-                                info.getShopId(), 
-                                info.getItemId(), 
-                                info.getItemStack(), 
-                                quantity,
-                                false
-                            );
-                            
-                            // Appliquer les remplacements
-                            List<String> newLore = replacePlaceholders(originalLore, prices, player);
-                            ItemMeta meta = button.getItemMeta();
-                            meta.setLore(newLore);
-                            button.setItemMeta(meta);
-                            
-                            // Ajouter l'item pour mise à jour groupée
-                            updatedItems.put(slot, button.clone());
-                        } catch (Exception e) {
-                            // Ignorer les erreurs individuelles
+                        } else if (info.getMenuType().equals("AMOUNT_SELECTION_BULK")) {
+                            int stackValue = info.getValueForSlot(slot);
+                            quantity = stackValue * button.getMaxStackSize();
+                        } else {
+                            quantity = info.getItemStack().getAmount();
                         }
+                        
+                        // ✅ FIX: Forçar refresh para garantir preços atualizados
+                        Map<String, String> prices = getCachedPlaceholders(
+                            player, 
+                            info.getShopId(), 
+                            info.getItemId(), 
+                            info.getItemStack(), 
+                            quantity,
+                            true
+                        );
+                        
+                        List<String> newLore = replacePlaceholders(originalLore, prices, player);
+                        ItemMeta meta = button.getItemMeta();
+                        meta.setLore(newLore);
+                        button.setItemMeta(meta);
+                        
+                        updatedItems.put(slot, button.clone());
+                    } catch (Exception e) {
+                        plugin.getLogger().warning("Error updating slot " + slot + ": " + e.getMessage());
                     }
-                    
-                    // Mettre à jour tous les items du lot en une seule fois
-                    if (!updatedItems.isEmpty()) {
-                        plugin.getServer().getScheduler().runTask(plugin, () -> {
-                            if (player.isOnline() && player.getOpenInventory().equals(view)) {
-                                for (Map.Entry<Integer, ItemStack> entry : updatedItems.entrySet()) {
-                                    view.getTopInventory().setItem(entry.getKey(), entry.getValue());
-                                }
-                                player.updateInventory();
+                }
+                
+                // Atualizar todos os items de uma vez
+                if (!updatedItems.isEmpty()) {
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        if (player.isOnline() && player.getOpenInventory().equals(view)) {
+                            for (Map.Entry<Integer, ItemStack> entry : updatedItems.entrySet()) {
+                                view.getTopInventory().setItem(entry.getKey(), entry.getValue());
                             }
-                        });
-                    }
-                });
-            }
+                            player.updateInventory();
+                        }
+                    });
+                }
+            });
         } catch (Exception e) {
             plugin.getLogger().warning("Error updating amount selection inventory: " + e.getMessage());
         }
